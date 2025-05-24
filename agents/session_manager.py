@@ -1,8 +1,21 @@
-import pandas as pd
+import sqlite3
 
-def get_available_sessions(interests):
-    df = pd.read_csv("data/sessions.csv")
-    return df[df["topic"].isin(interests) & (df["max_seats"] > 0)].to_dict(orient="records")
+def get_available_sessions():
+    conn = sqlite3.connect("event.db")
+    c = conn.cursor()
+    c.execute("SELECT * FROM sessions WHERE max_seats > 0")
+    sessions = c.fetchall()
+    conn.close()
+    return sessions
+
+def user_registered(username, session_id):
+    conn = sqlite3.connect("event.db")
+    c = conn.cursor()
+    c.execute("SELECT 1 FROM registrations WHERE username = ? AND session_id = ?", (username, session_id))
+    exists = c.fetchone() is not None
+    conn.close()
+    return exists
+
 
 def get_faq_response(query):
     faq = {
