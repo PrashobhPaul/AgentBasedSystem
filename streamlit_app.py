@@ -37,7 +37,9 @@ def handle_user_query(user, query):
 # agents/recommender_agent.py
 from utils.db import query_db
 from agents.calendar_agent import is_time_free
-from agents.session_manager import get_available_sessions, user_registered_sessions
+from agents import session_manager 
+get_available_sessions = session_manager.get_available_sessions
+user_registered_sessions = session_manager.user_registered
 
 def recommend_sessions(user):
     user_info = query_db("SELECT interests FROM users WHERE username = ?", (user,), one=True)
