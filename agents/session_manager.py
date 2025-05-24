@@ -2,20 +2,19 @@ import sqlite3
 
 def get_available_sessions():
     conn = sqlite3.connect("event.db")
-    c = conn.cursor()
-    c.execute("SELECT * FROM sessions WHERE max_seats > 0")
-    sessions = c.fetchall()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM sessions WHERE max_seats > 0")
+    results = cursor.fetchall()
     conn.close()
-    return sessions
+    return results
 
 def user_registered(username, session_id):
     conn = sqlite3.connect("event.db")
-    c = conn.cursor()
-    c.execute("SELECT 1 FROM registrations WHERE username = ? AND session_id = ?", (username, session_id))
-    exists = c.fetchone() is not None
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM registrations WHERE username = ? AND session_id = ?", (username, session_id))
+    result = cursor.fetchone()
     conn.close()
-    return exists
-
+    return result is not None
 
 def get_faq_response(query):
     faq = {
