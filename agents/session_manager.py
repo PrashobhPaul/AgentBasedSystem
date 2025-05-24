@@ -4,9 +4,9 @@ def get_available_sessions():
     conn = sqlite3.connect("event.db")
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM sessions WHERE max_seats > 0")
-    results = cursor.fetchall()
+    sessions = cursor.fetchall()
     conn.close()
-    return results
+    return sessions
 
 def user_registered(username, session_id):
     conn = sqlite3.connect("event.db")
