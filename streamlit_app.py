@@ -10,7 +10,7 @@ if not st.session_state.username:
     username = st.text_input("Enter your username to continue")
     if st.button("Login"):
         st.session_state.username = username
-        st.experimental_rerun()
+        st.rerun()
 else:
     st.subheader(f"Welcome {st.session_state.username}!")
     query = st.text_input("Ask about the event or request recommendations:")
