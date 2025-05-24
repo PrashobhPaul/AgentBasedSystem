@@ -21,4 +21,11 @@ def get_faq_response(query):
         "who are the speakers": "Top speakers include Dr. A, Dr. B."
     }
     return faq.get(query.lower(), "Sorry, I don’t have that info.")
+def get_user_calendar(username):
+    conn = sqlite3.connect("event.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT session_id FROM registrations WHERE username = ?", (username,))
+    sessions = cursor.fetchall()
+    conn.close()
+    return [s[0] for s in sessions]
 
