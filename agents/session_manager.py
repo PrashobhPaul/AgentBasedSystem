@@ -1,5 +1,4 @@
 import sqlite3
-
 def get_available_sessions():
     conn = sqlite3.connect("event.db")
     cursor = conn.cursor()
@@ -7,7 +6,6 @@ def get_available_sessions():
     sessions = cursor.fetchall()
     conn.close()
     return sessions
-
 def user_registered(username, session_id):
     conn = sqlite3.connect("event.db")
     cursor = conn.cursor()
@@ -15,7 +13,6 @@ def user_registered(username, session_id):
     result = cursor.fetchone()
     conn.close()
     return result is not None
-
 def get_faq_response(query):
     faq = {
         "when is the event": "The event is on 25-27 May 2025.",
