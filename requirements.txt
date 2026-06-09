@@ -1,0 +1,13 @@
+# Core runtime
+streamlit>=1.33
+langgraph>=0.2
+
+# Optional LLM layer (provider-agnostic intent classification).
+# Only needed if you set LLM_PROVIDER. langchain's init_chat_model selects the
+# provider at runtime; install the matching integration package you intend to use:
+langchain>=0.3
+# langchain-openai>=0.2      # for LLM_PROVIDER=openai or azure_openai
+# langchain-anthropic>=0.2   # for LLM_PROVIDER=anthropic
+
+# Dev / test
+pytest>=8.0

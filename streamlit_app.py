@@ -1,106 +1,84 @@
+"""Streamlit UI for the Event Management assistant.
+
+Thin presentation layer over ``agent_system``: it owns session state and
+rendering only; all logic lives in the orchestrated agent graph. Auto-initialises
+the demo database on first run so the app works out of the box.
+"""
+from __future__ import annotations
+
+import os
+
 import streamlit as st
-from agents.bot_agent import handle_user_query
 
-st.title("Event Management Chatbot")
+from agent_system.config import get_settings
+from agent_system.database.init_db import init_db
+from agent_system.graph import run_turn
 
-if 'username' not in st.session_state:
+st.set_page_config(page_title="Event Management Assistant", page_icon="🎫")
+
+
+@st.cache_resource
+def _ensure_db() -> str:
+    """Seed the demo DB once per server process if it doesn't exist yet."""
+    settings = get_settings()
+    if not os.path.exists(settings.db_path):
+        init_db()
+    return settings.db_path
+
+
+_ensure_db()
+
+st.title("🎫 Event Management Assistant")
+st.caption("Ask FAQs, get session recommendations, or register — try `recommend sessions` or `register for S5`.")
+
+if "username" not in st.session_state:
     st.session_state.username = None
+if "history" not in st.session_state:
+    st.session_state.history = []  # list[(role, text)]
 
+# --- Login ---------------------------------------------------------------- #
 if not st.session_state.username:
-    username = st.text_input("Enter your username to continue")
-    if st.button("Login"):
-        st.session_state.username = username
+    with st.form("login"):
+        username = st.text_input("Enter your username to continue", value="john_doe")
+        submitted = st.form_submit_button("Login")
+    if submitted and username.strip():
+        st.session_state.username = username.strip()
         st.rerun()
-else:
-    st.subheader(f"Welcome {st.session_state.username}!")
-    query = st.text_input("Ask about the event or request recommendations:")
+    st.info("Demo users: `john_doe`, `jane_smith`, `amir_k`")
+    st.stop()
 
-    if st.button("Ask") and query:
-        response = handle_user_query(st.session_state.username, query)
-        st.write(response)
+# --- Chat ----------------------------------------------------------------- #
+col1, col2 = st.columns([4, 1])
+col1.subheader(f"Welcome, {st.session_state.username}!")
+if col2.button("Logout"):
+    st.session_state.username = None
+    st.session_state.history = []
+    st.rerun()
 
-# agents/bot_agent.py
-from agents.recommender_agent import recommend_sessions
-from agents.session_manager import get_faq_response
+for role, text in st.session_state.history:
+    with st.chat_message(role):
+        st.markdown(text)
 
-STATIC_QUERIES = ["when is the event", "where is the event", "who are the speakers"]
+query = st.chat_input("Ask about the event or request recommendations…")
+if query:
+    st.session_state.history.append(("user", query))
+    with st.chat_message("user"):
+        st.markdown(query)
 
-def handle_user_query(user, query):
-    lower_query = query.lower()
-    for static_q in STATIC_QUERIES:
-        if static_q in lower_query:
-            return get_faq_response(static_q)
-    if "recommend" in lower_query:
-        return recommend_sessions(user)
-    return "I'm not sure how to help with that yet."
+    state = run_turn(st.session_state.username, query)
+    response = state.get("response", "")
 
-# agents/recommender_agent.py
-from utils.db import query_db
-from agents.calendar_agent import is_time_free
-from agents import session_manager 
-get_available_sessions = session_manager.get_available_sessions
-user_registered_sessions = session_manager.user_registered
-
-def recommend_sessions(user):
-    user_info = query_db("SELECT interests FROM users WHERE username = ?", (user,), one=True)
-    if not user_info:
-        return "User not found."
-
-    interests = user_info[0].split(',')
-    registered = [s[0] for s in user_registered_sessions(user)]
-    available_sessions = get_available_sessions(interests)
-
-    recommendations = []
-    for session in available_sessions:
-        if session[0] in registered:
-            continue
-        if is_time_free(user, session[3], session[4], session[5]):
-            recommendations.append(session)
-
-    if not recommendations:
-        return "No sessions available that match your interests and free time."
-
-    return [{"session_id": s[0], "title": s[1], "time": f"{s[3]} {s[4]}-{s[5]}"} for s in recommendations]
-
-# agents/calendar_agent.py
-from agents.session_manager import get_user_calendar
-
-def is_time_free(user, day, start, end):
-    calendar = get_user_calendar(user)
-    if day not in calendar:
-        return True
-    for slot in calendar[day]:
-        if not (end <= slot[0] or start >= slot[1]):
-            return False
-    return True
-
-# agents/session_manager.py
-from utils.db import query_db
-
-def get_faq_response(query):
-    faqs = {
-        "when is the event": "The event is scheduled across 3 days: June 1st to June 3rd.",
-        "where is the event": "The event takes place at the Grand Conference Center, New York.",
-        "who are the speakers": "Top industry leaders including Dr. A, Dr. B, and Dr. C."
-    }
-    return faqs.get(query, "No information available.")
-
-def get_available_sessions(interests):
-    placeholders = ','.join('?' for _ in interests)
-    query = f"SELECT * FROM sessions WHERE topic IN ({placeholders}) AND max_seats > 0"
-    return query_db(query, interests)
-
-def user_registered_sessions(user):
-    return query_db("SELECT session_id FROM registrations WHERE username = ?", (user,))
-
-def get_user_calendar(user):
-    sessions = query_db("""
-        SELECT s.day, s.start_time, s.end_time
-        FROM sessions s
-        JOIN registrations r ON s.session_id = r.session_id
-        WHERE r.username = ?
-    """, (user,))
-    calendar = {}
-    for day, start, end in sessions:
-        calendar.setdefault(day, []).append((start, end))
-    return calendar
+    with st.chat_message("assistant"):
+        st.markdown(response)
+        if state.get("data"):
+            st.dataframe(state["data"], use_container_width=True, hide_index=True)
+        with st.expander("Routing details"):
+            st.json(
+                {
+                    "intent": state.get("intent"),
+                    "confidence": state.get("confidence"),
+                    "source": state.get("intent_source"),
+                    "entities": state.get("entities"),
+                }
+            )
+    st.session_state.history.append(("assistant", response))
