@@ -1,57 +1,68 @@
-import sqlite3
+"""Initialise and seed the SQLite database.
 
-def init_db():
-    conn = sqlite3.connect("event.db")
-    c = conn.cursor()
+Run as a module:  python -m agent_system.database.init_db
+This creates the schema and loads a small, realistic demo dataset including
+registrations (the original seed never populated registrations, which left the
+recommender's conflict logic untestable).
+"""
+from __future__ import annotations
 
-    # Drop and recreate tables
-    c.executescript("""
-    DROP TABLE IF EXISTS users;
-    DROP TABLE IF EXISTS sessions;
-    DROP TABLE IF EXISTS registrations;
+import os
+from pathlib import Path
 
-    CREATE TABLE users (
-        username TEXT PRIMARY KEY,
-        interests TEXT,
-        role TEXT
-    );
+from agent_system.config import get_settings
+from agent_system.repository.db import connection
 
-    CREATE TABLE sessions (
-        session_id TEXT PRIMARY KEY,
-        title TEXT,
-        topic TEXT,
-        day TEXT,
-        start_time TEXT,
-        end_time TEXT,
-        speaker TEXT,
-        location TEXT,
-        max_seats INTEGER
-    );
+SCHEMA_FILE = Path(__file__).with_name("schema.sql")
 
-    CREATE TABLE registrations (
-        username TEXT,
-        session_id TEXT,
-        PRIMARY KEY (username, session_id)
-    );
-    """)
+USERS = [
+    # username, interests, role
+    ("john_doe", "AI,Data", "Manager"),
+    ("jane_smith", "Cloud,Security", "Developer"),
+    ("amir_k", "AI,Cloud", "Architect"),
+]
 
-    # Insert dummy users
-    users = [
-        ("john_doe", "AI,Data", "Manager"),
-        ("jane_smith", "Cloud,Security", "Developer")
-    ]
-    c.executemany("INSERT INTO users VALUES (?, ?, ?)", users)
+SESSIONS = [
+    # id, title, topic, day, start, end, speaker, location, max_seats
+    ("S1", "AI in Marketing",        "AI",       "Day 1", "10:00", "11:00", "Dr. A", "Hall A", 50),
+    ("S2", "Securing APIs",          "Security", "Day 1", "11:00", "12:00", "Dr. B", "Hall B", 50),
+    ("S3", "Scaling on the Cloud",   "Cloud",    "Day 1", "10:30", "11:30", "Dr. C", "Hall C", 2),
+    ("S4", "Data Mesh in Practice",  "Data",     "Day 2", "09:00", "10:00", "Dr. D", "Hall A", 40),
+    ("S5", "LLM Agents 101",         "AI",       "Day 2", "10:00", "11:00", "Dr. E", "Hall B", 30),
+    ("S6", "Zero Trust Networking",  "Security", "Day 2", "10:00", "11:00", "Dr. F", "Hall C", 0),  # full
+]
 
-    # Insert dummy sessions (simplified)
-    sessions = [
-        ("S1", "AI in Marketing", "AI", "Day 1", "10:00", "11:00", "Dr. A", "Hall A", 50),
-        ("S2", "Securing APIs", "Security", "Day 1", "11:00", "12:00", "Dr. B", "Hall B", 50)
-    ]
-    c.executemany("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", sessions)
+# Pre-existing registrations create a real calendar to test conflicts against.
+REGISTRATIONS = [
+    ("john_doe", "S1"),   # AI, Day 1 10:00-11:00  -> conflicts with S3 (10:30-11:30)
+    ("jane_smith", "S2"), # Security, Day 1 11:00-12:00
+]
 
-    conn.commit()
-    conn.close()
+
+def init_db(seed: bool = True) -> str:
+    settings = get_settings()
+    # Start clean so re-runs are deterministic.
+    if os.path.exists(settings.db_path):
+        os.remove(settings.db_path)
+
+    schema = SCHEMA_FILE.read_text(encoding="utf-8")
+    with connection() as conn:
+        conn.executescript(schema)
+        if seed:
+            conn.executemany(
+                "INSERT INTO users (username, interests, role) VALUES (?, ?, ?)", USERS
+            )
+            conn.executemany(
+                "INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", SESSIONS
+            )
+            conn.executemany(
+                "INSERT INTO registrations (username, session_id) VALUES (?, ?)",
+                REGISTRATIONS,
+            )
+        conn.commit()
+    return settings.db_path
+
 
 if __name__ == "__main__":
-    init_db()
-
+    path = init_db()
+    print(f"Initialised database at: {path}")
